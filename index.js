@@ -1,7 +1,5 @@
 import fs from "fs";
-if (!fs.existsSync("uploads")) {
-  fs.mkdirSync("uploads");
-}
+
 import express from "express";
 import dotenv from "dotenv";
 import cors from "cors";
@@ -14,19 +12,38 @@ import messagesRoutes from "./routes/MessagesRoutes.js";
 import channelRoutes from "./routes/ChannelRoutes.js";
 
 
+
 dotenv.config();
+
+if (!fs.existsSync("uploads")) {
+  fs.mkdirSync("uploads");
+}
 
 const app = express();
 const port = process.env.PORT ||  5050;
 const databaseURL = process.env.ATLAS_URL;
 
 
-// For development, allow all origins. Change to process.env.ORIGIN for production.
+const allowedOrigins = [
+    'http://localhost:5173', // Local development
+    'https://my-chat-app.o2v9.onrender.com' // Production URL
+];
+
 app.use(cors({
-    origin: (origin, callback) => callback(null, true),
-    methods:["GET","POST","PUT","PATCH","DELETE"],
-    credentials:true,
+    origin: (origin, callback) => {
+        console.log('CORS Origin:', origin); // Log the origin of the request
+        if (allowedOrigins.indexOf(origin) !== -1 || !origin) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    credentials: true,
 }));
+
+// Handle preflight requests
+app.options('*', cors()); // Enable pre-flight across-the-board
 
 
 app.use("/uploads/profiles", express.static("uploads/profiles"));
@@ -38,6 +55,11 @@ app.use(express.json({ limit: '10mb' }));
 // Health check route
 app.get('/api/health', (req, res) => {
     res.json({ status: 'ok' });
+});
+
+// Root route for Render and browser
+app.get('/', (req, res) => {
+  res.send('API is running');
 });
 
 // Mount AuthRoutes only once
