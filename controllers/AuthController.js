@@ -2,6 +2,7 @@ import User from "../models/UserModel.js";
 import jwt from "jsonwebtoken"
 import bcrypt from "bcrypt";
 import { renameSync,unlinkSync } from "fs";
+import { sanitizeFilename } from "../utils/file-utils.js";
 
 const maxAge = 3 * 24 * 60 * 60 * 1000;
 
@@ -16,11 +17,25 @@ export const signup = async (request,response,next) =>{
             return response.status(400).send("Email and Password is required")
         }
         const user = await User.create({email,password});
-        response.cookie("jwt",createToken(email,user.id),{
-            maxAge,
-            secure:true,
-            sameSite:"None",
-        });
+        // Set cookie including the new Partitioned attribute to avoid
+        // cross-site cookie rejections in modern browsers.
+        // Partitioned is experimental — if the browser doesn't support it
+        // it will ignore the attribute. We build the Set-Cookie header
+        // manually so we can include it.
+        try {
+            const token = createToken(email,user.id);
+            const maxAgeSeconds = Math.floor(maxAge / 1000);
+            const cookieStr = `jwt=${token}; Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=None; Partitioned`;
+            // Append so we don't clobber any other Set-Cookie headers
+            response.append('Set-Cookie', cookieStr);
+        } catch (e) {
+            // fallback to express cookie (older behavior)
+            response.cookie("jwt",createToken(email,user.id),{
+                maxAge,
+                secure:true,
+                sameSite:"None",
+            });
+        }
         return response.status(201).json({user:{
             id:user.id,
             email:user.email,
@@ -35,23 +50,35 @@ export const signup = async (request,response,next) =>{
 export const login = async (request,response,next) =>{
     try {
         const {email,password}=request.body;
+        if (process.env.NODE_ENV !== 'production') {
+            try { console.log(`[auth] login attempt for email=${String(email).slice(0,100)}`); } catch(e){}
+        }
         if (!email || !password) {
             return response.status(400).send("Email and Password is required")
         }
         const user = await User.findOne({email});
         if(!user){
+            if (process.env.NODE_ENV !== 'production') console.log('[auth] user not found for email=', email);
             return response.status(404).send("User with the given email not found.")
         }
         const auth = await bcrypt.compare(password,user.password);
         if(!auth){
+             if (process.env.NODE_ENV !== 'production') console.log('[auth] password mismatch for user=', user.email);
              return response.status(400).send("Password is incorrect.")
         }
 
-        response.cookie("jwt",createToken(email,user.id),{
-            maxAge,
-            secure:true,
-            sameSite:"None",
-        });
+        try {
+            const token = createToken(email,user.id);
+            const maxAgeSeconds = Math.floor(maxAge / 1000);
+            const cookieStr = `jwt=${token}; Path=/; Max-Age=${maxAgeSeconds}; HttpOnly; Secure; SameSite=None; Partitioned`;
+            response.append('Set-Cookie', cookieStr);
+        } catch (e) {
+            response.cookie("jwt",createToken(email,user.id),{
+                maxAge,
+                secure:true,
+                sameSite:"None",
+            });
+        }
         return response.status(200).json({user:{
             id:user.id,
             email:user.email,
@@ -138,7 +165,9 @@ export const addProfileImage = async (request,response,next) =>{
 
 
             const date = Date.now();
-            let fileName = "uploads/profiles/" + date + "-" + request.file.originalname;
+            const original = request.file.originalname || 'upload';
+            const safeName = sanitizeFilename(original);
+            let fileName = `uploads/profiles/${date}-${safeName}`;
             renameSync(request.file.path, fileName);
 
             // Store only the relative path in the database
@@ -192,7 +221,13 @@ export const logout = async (request,response,next) =>{
     try {
      
 
-        response.cookie("jwt","",{maxAge:1,secure:true,sameSite:"None"})
+        try {
+            // expire the cookie and include Partitioned attribute for consistency
+            const cookieStr = `jwt=; Path=/; Max-Age=0; HttpOnly; Secure; SameSite=None; Partitioned`;
+            response.append('Set-Cookie', cookieStr);
+        } catch (e) {
+            response.cookie("jwt","",{maxAge:1,secure:true,sameSite:"None"})
+        }
         return response.status(200).send("Logout successfull.")
     } catch(error) {
         console.error(error);

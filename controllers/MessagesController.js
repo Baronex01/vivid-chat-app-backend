@@ -1,5 +1,6 @@
 import Message from '../models/MessagesModel.js'
 import {mkdirSync, rename, renameSync} from "fs"
+import { sanitizeFilename } from "../utils/file-utils.js";
 
 export const getMessages = async (request, response, next) => {
   try {
@@ -37,7 +38,9 @@ export const uploadFile = async (request, response, next) => {
     
 const date = Date.now();
 let fileDir =`uploads/files/${date}`
-let fileName =`${fileDir}/${request.file.originalname}`
+const original = request.file.originalname || 'upload';
+const safeName = sanitizeFilename(original);
+let fileName =`${fileDir}/${safeName}`
 
 mkdirSync(fileDir,{recursive:true});
 

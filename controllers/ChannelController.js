@@ -1,4 +1,12 @@
 // Add members to an existing channel
+import { sanitizeFilename } from "../utils/file-utils.js";
+import { mkdirSync, renameSync } from "fs";
+import mongoose from "mongoose";
+import Channel from "../models/ChannelModel.js";
+import User from "../models/UserModel.js";
+
+
+
 export const addChannelMembers = async (req, res) => {
     try {
         const { channelId } = req.params;
@@ -26,10 +34,7 @@ export const addChannelMembers = async (req, res) => {
         return res.status(500).json({ error: "Internal Server Error" });
     }
 };
-import { mkdirSync, renameSync } from "fs";
-import mongoose from "mongoose";
-import Channel from "../models/ChannelModel.js";
-import User from "../models/UserModel.js";
+
 
 
 
@@ -79,6 +84,7 @@ export const deleteChannel = async (req, res) => {
 };
 
 
+
 // Upload or update channel profile image
 export const uploadChannelProfileImage = async (request, response, next) => {
     try {
@@ -91,7 +97,9 @@ export const uploadChannelProfileImage = async (request, response, next) => {
         }
         const date = Date.now();
         let fileDir = `uploads/profiles/${date}`;
-        let fileName = `${fileDir}/${request.file.originalname}`;
+        const original = request.file.originalname || 'upload';
+        const safeName = sanitizeFilename(original);
+        let fileName = `${fileDir}/${safeName}`;
         mkdirSync(fileDir, { recursive: true });
         renameSync(request.file.path, fileName);
         // Update channel with new profile image path

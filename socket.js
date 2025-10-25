@@ -3,11 +3,18 @@ import Message from "./models/MessagesModel.js"
 import Channel from "./models/ChannelModel.js";
 
 
-const setupSocket = (server) => {
+const setupSocket = (server, allowedOrigins = ["http://localhost:5173"]) => {
     const io = new SocketIoServer(server,{
         cors:{
-            origin:"http://localhost:5173",
-            method:["GET","POST"],
+            origin: function(origin, callback){
+                // allow non-browser clients
+                if(!origin || allowedOrigins.includes(origin)){
+                    callback(null, true);
+                } else {
+                    callback(new Error('CORS not allowed'), false);
+                }
+            },
+            methods:["GET","POST"],
             credentials:true,
         },
     });
